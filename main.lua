@@ -14,6 +14,7 @@ function love.load()
     _G.clickerwigglespeed = 1
     _G.clickerwigglepos = 0
     _G.menu_type_queued = "clicker"
+    _G.id = 0
 end
 
 function PointBoxCollision(px,py,bx,by,bw,bh)
@@ -99,32 +100,50 @@ function DrawWithShadow(drawable, x, y, r, sx, sy, ox, oy, kx, ky, opacity)
 end
 
 -- Items
+function ReturnID()
+    id = id + 1
+    return id - 1
+end
+
+
 function NewClicksItem(texture_path, name, description, clicksgiven, cost, costexp)
     local item = {}
     item.initialize = function ()
         item.type = "clicks"
         item.texture = love.graphics.newImage(texture_path)
         item.texturescale = 1
-
-        item.name = name
-        item.description = description
-        item.textscale = 1
+        item.id = ReturnID()
+        item.bounds = function()
+            return 0, item.id*RES_Y/6, RES_X, RES_Y/6
+        end
 
         item.clicksgiven = clicksgiven
         item.cost = cost
         item.costexp = costexp
+
+        item.name = name
+        item.description = function () return (string.format("Costs % and gives +% extra per click.", item.cost, item.clicksgiven) + description) end
+        item.textscale = 1
+
         item.newcost = function ()
             item.cost = item.cost ^ item.costexp
         end
         item.totalowned = 0
         -- item.totalowned = load the total amount of this item owned here...
         item.cost = item.cost * (item.costexp^item.totalowned)
+
     end
     item.totalsogs = function ()
         return item.clicksgiven * item.totalowned
     end
+    item.isclicked = function (x, y)
+        PointBoxCollision(x, y, item.bounds())
+    end
     item.render = function ()
-        
+        local x, y, w, h = item.bounds()
+        DrawWithShadow(item.texture,x+h/2,y+h/2, 0, item.texturescale, item.texturescale, item.texture:getWidth()/2, item.texture:getHeight()/2, 0, 0)
+        DrawText(item.name, x+h/2,y+h/2+item.texture:getHeight()/2*item.texturescale, item.texture:getWidth()*item.texturescale, 0, item.textscale)
+        DrawText(item.description(), x+(w/4)*3,y+h/2, RES_X-h/2, 0, item.textscale/2)
     end
     return item
 end
