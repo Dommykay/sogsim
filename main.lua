@@ -11,10 +11,9 @@ function love.load()
     _G.menu = ReturnMenu("clicker")
     _G.last_time = love.timer.getTime()
     _G.clickspeed = 0
-    _G.clickerwigglespeed = 1
-    _G.clickerwigglepos = 0
     _G.menu_type_queued = "clicker"
     _G.id = 0
+
 end
 
 function PointBoxCollision(px,py,bx,by,bw,bh)
@@ -106,47 +105,54 @@ function ReturnID()
 end
 
 
-function NewClicksItem(texture_path, name, description, clicksgiven, cost, costexp)
+function NewClicksItem(texture_path, name, description, clicksgiven, cost, costexp, texturescale)
     local item = {}
-    item.initialize = function ()
-        item.type = "clicks"
-        item.texture = love.graphics.newImage(texture_path)
-        item.texturescale = 1
-        item.id = ReturnID()
-        item.bounds = function()
-            return 0, item.id*RES_Y/6, RES_X, RES_Y/6
-        end
-
-        item.clicksgiven = clicksgiven
-        item.cost = cost
-        item.costexp = costexp
-
-        item.name = name
-        item.description = function () return (string.format("Costs % and gives +% extra per click.", item.cost, item.clicksgiven) + description) end
-        item.textscale = 1
-
-        item.newcost = function ()
-            item.cost = item.cost ^ item.costexp
-        end
-        item.totalowned = 0
-        -- item.totalowned = load the total amount of this item owned here...
-        item.cost = item.cost * (item.costexp^item.totalowned)
-
+    item.type = "clicks"
+    item.texture = love.graphics.newImage(texture_path)
+    item.texturescale = texturescale
+    item.id = ReturnID()
+    item.bounds = function(scroll_offset)
+        return 0, (item.id*RES_Y/6)+scroll_offset, RES_X, RES_Y/6
     end
+
+    item.clicksgiven = clicksgiven
+    item.cost = cost
+    item.costexp = costexp
+
+    item.name = name
+    item.description = function () return (string.format("Costs %s and gives +%s extra per click. %s", item.cost, item.clicksgiven, description)) end
+    item.textscale = texturescale * 2
+
+    item.newcost = function ()
+        item.cost = item.cost ^ item.costexp
+    end
+    item.totalowned = 0
+    -- item.totalowned = load the total amount of this item owned here...
+    item.cost = item.cost * (item.costexp^item.totalowned)
     item.totalsogs = function ()
         return item.clicksgiven * item.totalowned
     end
-    item.isclicked = function (x, y)
-        PointBoxCollision(x, y, item.bounds())
+    item.isclicked = function (x, y, scroll_offset) return PointBoxCollision(x, y, item.bounds(scroll_offset)) and PointBoxCollision(x, y, menu.shop.bounds()) end
+    
+    item.trybuy = function ()
+        if sog_rating > item.cost then
+            sog_rating = sog_rating - item.cost
+            item.totalowned = item.totalowned + 1
+            item.newcost()
+        end
     end
-    item.render = function ()
-        local x, y, w, h = item.bounds()
-        DrawWithShadow(item.texture,x+h/2,y+h/2, 0, item.texturescale, item.texturescale, item.texture:getWidth()/2, item.texture:getHeight()/2, 0, 0)
-        DrawText(item.name, x+h/2,y+h/2+item.texture:getHeight()/2*item.texturescale, item.texture:getWidth()*item.texturescale, 0, item.textscale)
-        DrawText(item.description(), x+(w/4)*3,y+h/2, RES_X-h/2, 0, item.textscale/2)
+
+    item.render = function (scroll_offset)
+        local x, y, w, h = item.bounds(scroll_offset)
+        DrawWithShadow(item.texture,x+h/2,y+h/2, 0, item.texturescale*global_scale, item.texturescale*global_scale, item.texture:getWidth()/2, item.texture:getHeight()/2, 0, 0)
+        DrawText(item.name, x+h+RES_X/15,y+h/2, RES_X/4*item.textscale*global_scale, 0, item.textscale*global_scale)
+        DrawText(item.description(), x+RES_X/2,y+h/2, (RES_X*item.textscale)/(global_scale), 0, item.textscale*((global_scale+1)/2))
     end
     return item
 end
+
+
+
 
 function NewPassiveItem(texture_path, name, sogspersecond, cost, costexp)
     local item = {}
@@ -168,8 +174,10 @@ end
 
 function ReturnItems()
     local items = {}
-
-
+    for i=1,15 do
+        table.insert(items, NewClicksItem("Assets/Textures/download.jpeg", "testname", "testdesc", 1, 1, 1.15,0.25))
+    end
+    return items
 end
 
 
@@ -258,8 +266,8 @@ function ReturnMenu(menu_type)
 
         --Text at the top of the screen saying the 'score'
         menu.foreground.sogratingtext = ReturnText()
-        menu.foreground.sogratingtext.limit = function() return RES_X end
-        menu.foreground.sogratingtext.scale = function () return 2 end
+        menu.foreground.sogratingtext.limit = function() return 999999999999 end
+        menu.foreground.sogratingtext.scale = function () return 2*global_scale end
         menu.foreground.sogratingtext.y = function () return menu.foreground.borders.topheight()/2 end
         menu.foreground.sogratingtext.text = function () return string.format("SOG RATING: %s", sog_rating) end
         menu.foreground.sogratingtext.rotation = function () return 0 end
@@ -431,6 +439,12 @@ function ReturnMenu(menu_type)
             ResetGraphicsColour()
         end
 
+        --Render everything
+        menu.render = function ()
+            menu.background.render()
+            menu.foreground.render()            
+        end
+
 
 
         --Updates pretty much everything in the menu
@@ -513,6 +527,10 @@ function ReturnMenu(menu_type)
             end
         end
 
+        --Scroll inputs
+        menu.scrollinputs = function (x, y)
+        end
+
 
         return menu
      
@@ -542,7 +560,7 @@ function ReturnMenu(menu_type)
         --Generate the top border
         menu.foreground.borders.top = function()
             love.graphics.setColor(menu.foreground.borders.colour[1], menu.foreground.borders.colour[2], menu.foreground.borders.colour[3], 1)
-            love.graphics.rectangle("fill", 0, 0, RES_X, (RES_Y*global_scale/6))
+            love.graphics.rectangle("fill", 0, 0, RES_X, menu.foreground.borders.topheight())
             ResetGraphicsColour()
         end
 
@@ -567,8 +585,8 @@ function ReturnMenu(menu_type)
 
         --Text at the top of the screen saying the 'score'
         menu.foreground.sogratingtext = ReturnText()
-        menu.foreground.sogratingtext.limit = function() return RES_X end
-        menu.foreground.sogratingtext.scale = function () return 2 end
+        menu.foreground.sogratingtext.limit = function() return RES_X/global_scale end
+        menu.foreground.sogratingtext.scale = function () return 2*global_scale end
         menu.foreground.sogratingtext.y = function () return menu.foreground.borders.topheight()/2 end
         menu.foreground.sogratingtext.text = function () return string.format("SOG RATING: %s", sog_rating) end
         menu.foreground.sogratingtext.rotation = function () return 0 end
@@ -659,6 +677,28 @@ function ReturnMenu(menu_type)
             ResetGraphicsColour()
         end
 
+        menu.scroll = menu.foreground.borders.topheight()
+        menu.shop = {}
+        menu.shop.items = ReturnItems()
+        menu.shop.bounds = function ()
+            local topheight,bottomheight = menu.foreground.borders.topheight(), menu.foreground.borders.bottomheight()
+            return 0, topheight, RES_X, RES_Y - topheight - bottomheight
+        end
+        menu.shop.render = function ()
+            id = 0
+            for item=1,#menu.shop.items do
+                menu.shop.items[item].render(menu.scroll)
+            end
+        end
+
+        --Render everything
+        menu.render = function ()
+            menu.background.render()
+            menu.shop.render()
+            menu.foreground.render()
+            
+        end
+
 
 
         --Updates pretty much everything in the menu
@@ -681,6 +721,10 @@ function ReturnMenu(menu_type)
             end
         end
 
+        --Keyboard inputs so the shit doesnt crash even tho there is no kb inputs in this bit
+        menu.keyboardinputs = function ()
+        end
+
         --Checking for touch inputs
         menu.touchinputs = function (id, x, y, dx, dy, pressure)
             -- Shop button has been pressed?
@@ -690,10 +734,25 @@ function ReturnMenu(menu_type)
             end
         end
 
+        menu.scrollinputs = function (x, y)
+            menu.scroll = math.min(menu.scroll + (y^3)*10, menu.foreground.borders.topheight())
+        end
+
+        menu.touchmoved = function (id, x, y, dx, dy, pressure) 
+            if PointBoxCollision(x, y, menu.shop.bounds()) then
+                menu.scroll = math.min(menu.scroll + dy, menu.foreground.borders.topheight())
+            end
+        end
+
 
         return menu
     end
     
+end
+
+--Called when scrolled
+function love.wheelmoved(x, y)
+    menu.scrollinputs(x, y)
 end
 
 --Called when any mouse button is pressed
@@ -713,6 +772,11 @@ function love.touchreleased(id, x, y, dx, dy, pressure)
 end
 
 
+--https://open.spotify.com/track/4e6ZN0EcEqYx74BTC5xQzy 2:02
+function love.touchmoved(id, x, y, dx, dy, pressure)
+    menu.touchmoved(id, x, y, dx, dy, pressure)
+end
+
 function love.update(dt)
     if menu.type ~= menu_type_queued then
         menu = ReturnMenu(menu_type_queued)
@@ -721,7 +785,5 @@ function love.update(dt)
 end
 
 function love.draw()
-    menu.background.render()
-    menu.foreground.render()
-
+    menu.render()
 end
